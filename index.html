@@ -116,6 +116,10 @@
             background-color: #f2f2f2;
         }
         
+        .text-right {
+            text-align: right;
+        }
+        
         h1, h2, h3 {
             font-size: 1.5em;
         }
@@ -124,15 +128,60 @@
             font-size: 1.2em;
             margin: 5px 0;
         }
+        
+        /* Accessibility improvements */
+        button:focus, input:focus {
+            outline: 2px solid #4CAF50;
+            outline-offset: 2px;
+        }
+        
+        /* Add keyboard focus indicator */
+        .keyboard-focus {
+            box-shadow: 0 0 0 2px #4CAF50;
+        }
+        
+        /* Add tooltip styles for better UX */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Visual Subnet Calculator</h1>
         
+        <!-- Add info about creation -->
+        <p style="font-style: italic; font-size: 0.8em; text-align: right;">
+            Created by Aleksandr Sukhov on July 24, 2025<br>
+            Built with Claude Sonnet 3.7 Thinking model using only prompts, without writing a single line of code
+        </p>
+        
         <div class="form-group">
             <label for="networkAddress">Network Address:</label>
-            <input type="text" id="networkAddress" placeholder="e.g. 10.0.0.0">
+            <input type="text" id="networkAddress" placeholder="e.g. 10.0.0.0" aria-label="Network Address">
         </div>
         
         <div class="form-group">
@@ -209,657 +258,1262 @@
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // DOM elements
-            const networkAddressInput = document.getElementById('networkAddress');
-            const maskBitsInput = document.getElementById('maskBits');
-            const generateBtn = document.getElementById('generateBtn');
-            const resetBtn = document.getElementById('resetBtn');
-            const exportBtn = document.getElementById('exportBtn');
-            const resultsContainer = document.getElementById('resultsContainer');
-            const tableHeader = document.getElementById('tableHeader');
-            const tableBody = document.getElementById('tableBody');
-            const checkboxes = document.querySelectorAll('.checkboxes input[type="checkbox"]');
-            
-            // Subnet data array to store calculated subnets
-            let subnets = [];
-            
-            // Default values
-            const defaultNetworkAddress = '10.0.0.0';
-            const defaultMaskBits = 8;
-            
-            // Set default values
-            networkAddressInput.value = defaultNetworkAddress;
-            maskBitsInput.value = defaultMaskBits;
-            
-            // Check all checkboxes by default
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = true;
-            });
-            
-            // Event listeners
-            generateBtn.addEventListener('click', generateSubnets);
-            resetBtn.addEventListener('click', resetForm);
-            exportBtn.addEventListener('click', exportToXLSX);
-            
-            // Add event listeners to all checkboxes to update the table when changed
-            checkboxes.forEach(checkbox => {
-                checkbox.addEventListener('change', updateTable);
-            });
-            
-            // Functions
-            function resetForm() {
-                networkAddressInput.value = defaultNetworkAddress;
-                maskBitsInput.value = defaultMaskBits;
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = false;
-                });
-                resultsContainer.classList.add('hidden');
-                subnets = [];
-            }
-            
-            function generateSubnets() {
-                const networkAddress = networkAddressInput.value;
-                const maskBits = parseInt(maskBitsInput.value);
-                
-                // Validate inputs
-                if (!isValidIPv4(networkAddress)) {
-                    alert("Please enter a valid IPv4 address");
-                    return;
-                }
-                
-                if (isNaN(maskBits) || maskBits < 0 || maskBits > 32) {
-                    alert("Mask bits must be between 0 and 32");
-                    return;
-                }
-                
-                // Calculate subnet information
-                subnets = [calculateSubnet(networkAddress, maskBits)];
-                
-                // Update the table with the calculated subnet
-                updateTable();
-            }
-            
-            function isValidIPv4(ip) {
-                const regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-                return regex.test(ip);
-            }
-            
-            function calculateSubnet(networkAddress, maskBits) {
-                // Convert IP address to integer
-                const ipInt = ipToInt(networkAddress);
-                
-                // Calculate subnet mask
-                const mask = (0xffffffff >>> (32 - maskBits)) << (32 - maskBits);
-                
-                // Calculate network address (ensuring it's properly masked)
-                const networkInt = ipInt & mask;
-                const networkIP = intToIp(networkInt);
-                
-                // Calculate broadcast address
-                const broadcastInt = networkInt | (~mask & 0xffffffff);
-                const broadcastIP = intToIp(broadcastInt);
-                
-                // Calculate netmask in dotted decimal
-                const netmaskIP = intToIp(mask);
-                
-                // Calculate number of hosts
-                const hosts = Math.pow(2, 32 - maskBits) - 2;
-                const azureHosts = hosts > 5 ? hosts - 5 : 0;
-                
-                // Calculate first and last usable IP
-                const firstUsableInt = networkInt + 1;
-                const lastUsableInt = broadcastInt - 1;
-                
-                const firstUsableIP = intToIp(firstUsableInt);
-                const lastUsableIP = intToIp(lastUsableInt);
-                
-                // Calculate Azure usable IPs (excluding first 4 and last 1)
-                const azureFirstUsableInt = networkInt + 4; // First 4 are reserved
-                const azureLastUsableInt = broadcastInt - 1; // Last 1 is reserved
-                
-                let azureFirstUsableIP = '';
-                let azureLastUsableIP = '';
-                
-                if (azureFirstUsableInt <= azureLastUsableInt) {
-                    azureFirstUsableIP = intToIp(azureFirstUsableInt);
-                    azureLastUsableIP = intToIp(azureLastUsableInt);
-                }
-                
-                return {
-                    networkAddress: networkIP,
-                    maskBits: maskBits,
-                    subnetAddress: `${networkIP}/${maskBits}`,
-                    netmask: netmaskIP,
-                    range: `${networkIP} - ${broadcastIP}`,
-                    usableIPs: `${firstUsableIP} - ${lastUsableIP}`,
-                    azureUsableIPs: azureFirstUsableInt <= azureLastUsableInt ? `${azureFirstUsableIP} - ${azureLastUsableIP}` : 'N/A',
-                    hosts: hosts,
-                    azureHosts: azureHosts,
-                    networkInt: networkInt,
-                    parents: [],  // Array to store all parent mask bits in hierarchy
-                    childIndex: 0 // To track if it's the first or second child (0 or 1)
+        /**
+         * Visual Subnet Calculator
+         * 
+         * A comprehensive IPv4 subnet calculator with visualization capabilities
+         * that allows splitting, joining, and collapsing of subnets, with Excel export
+         * 
+         * Created by Aleksandr Sukhov on July 24, 2025
+         * Built with Claude Sonnet 3.7 Thinking model using only prompts
+         * 
+         * @version 1.0.0
+         */
+        document.addEventListener('DOMContentLoaded', () => {
+            // Create a SubnetCalculator namespace to prevent global pollution
+            const SubnetCalculator = (() => {
+                // Cache DOM elements for performance
+                const DOM = {
+                    networkAddressInput: document.getElementById('networkAddress'),
+                    maskBitsInput: document.getElementById('maskBits'),
+                    generateBtn: document.getElementById('generateBtn'),
+                    resetBtn: document.getElementById('resetBtn'),
+                    exportBtn: document.getElementById('exportBtn'),
+                    resultsContainer: document.getElementById('resultsContainer'),
+                    tableHeader: document.getElementById('tableHeader'),
+                    tableBody: document.getElementById('tableBody'),
+                    checkboxes: document.querySelectorAll('.checkboxes input[type="checkbox"]')
                 };
-            }
-            
-            function ipToInt(ip) {
-                const parts = ip.split('.');
-                return (parseInt(parts[0]) << 24) | 
-                       (parseInt(parts[1]) << 16) | 
-                       (parseInt(parts[2]) << 8) | 
-                       parseInt(parts[3]);
-            }
-            
-            function intToIp(int) {
-                return [
-                    (int >>> 24) & 255,
-                    (int >>> 16) & 255,
-                    (int >>> 8) & 255,
-                    int & 255
-                ].join('.');
-            }
-            
-            function divideSubnet(index) {
-                const subnet = subnets[index];
                 
-                // Can't divide /32 subnets
-                if (subnet.maskBits >= 31) {
-                    alert("Cannot divide a subnet with mask bits >= 31");
-                    return;
-                }
+                // Configuration constants
+                const CONFIG = {
+                    defaultNetworkAddress: '10.0.0.0',
+                    defaultMaskBits: 8,
+                    maxMaskBits: 32
+                };
                 
-                // Calculate new mask bits (one more bit = divide by 2)
-                const newMaskBits = subnet.maskBits + 1;
+                // Application state
+                const state = {
+                    subnets: [],
+                    cachedJoinData: null, // Cache join data for performance
+                    lastUpdate: null
+                };
                 
-                // Create new parents array with current subnet added as parent
-                const newParents = [...(subnet.parents || [])];
-                newParents.push(subnet.maskBits);
-                
-                // Calculate first subnet
-                const firstSubnet = calculateSubnet(subnet.networkAddress, newMaskBits);
-                firstSubnet.parents = newParents;
-                firstSubnet.childIndex = 0; // First child
-                
-                // Calculate second subnet
-                const secondSubnetInt = subnet.networkInt + Math.pow(2, 32 - newMaskBits);
-                const secondSubnetIP = intToIp(secondSubnetInt);
-                const secondSubnet = calculateSubnet(secondSubnetIP, newMaskBits);
-                secondSubnet.parents = newParents;
-                secondSubnet.childIndex = 1; // Second child
-                
-                // Replace the original subnet with the two new ones
-                subnets.splice(index, 1, firstSubnet, secondSubnet);
-                
-                // Update the table
-                updateTable();
-            }
-            
-            function collapseSubnets(index) {
-                // Need at least two subnets to collapse
-                if (subnets.length < 2 || index >= subnets.length - 1) {
-                    alert("Cannot collapse this subnet (need a following subnet)");
-                    return;
-                }
-                
-                const subnet1 = subnets[index];
-                const subnet2 = subnets[index + 1];
-                
-                // Check if they have the same mask bits
-                if (subnet1.maskBits !== subnet2.maskBits) {
-                    alert("Can only collapse subnets with the same mask bits");
-                    return;
-                }
-                
-                // Check if they're adjacent and can be collapsed
-                const subnet1Size = Math.pow(2, 32 - subnet1.maskBits);
-                
-                if (subnet1.networkInt + subnet1Size !== subnet2.networkInt) {
-                    alert("Subnets must be adjacent to collapse them");
-                    return;
-                }
-                
-                // Calculate the parent subnet
-                const newMaskBits = subnet1.maskBits - 1;
-                const collapsedSubnet = calculateSubnet(subnet1.networkAddress, newMaskBits);
-                
-                // If both subnets have the same parents and the last parent is one level up,
-                // we should keep the parent hierarchy except for the last entry
-                if (subnet1.parents.length > 0 && subnet2.parents.length > 0 && 
-                    subnet1.parents.length === subnet2.parents.length) {
+                /**
+                 * Initialize the application
+                 */
+                const init = () => {
+                    // Set default values
+                    DOM.networkAddressInput.value = CONFIG.defaultNetworkAddress;
+                    DOM.maskBitsInput.value = CONFIG.defaultMaskBits;
                     
-                    // Check if all parents except the last one match
-                    let parentsMatch = true;
-                    for (let i = 0; i < subnet1.parents.length - 1; i++) {
-                        if (subnet1.parents[i] !== subnet2.parents[i]) {
-                            parentsMatch = false;
+                    // Check all checkboxes by default
+                    DOM.checkboxes.forEach(checkbox => {
+                        checkbox.checked = true;
+                    });
+                    
+                    // Add event listeners
+                    DOM.generateBtn.addEventListener('click', generateSubnets);
+                    DOM.resetBtn.addEventListener('click', resetForm);
+                    DOM.exportBtn.addEventListener('click', exportToXLSX);
+                    
+                    // Add event listeners to all checkboxes to update the table when changed
+                    DOM.checkboxes.forEach(checkbox => {
+                        checkbox.addEventListener('change', updateTable);
+                    });
+                    
+                    // Add keyboard shortcuts
+                    document.addEventListener('keydown', handleKeyboardShortcuts);
+                    
+                    // Expose public methods to window for HTML onclick handlers
+                    window.divideSubnet = divideSubnet;
+                    window.collapseSubnets = collapseSubnets;
+                    window.joinSubnet = joinSubnet;
+                };
+                
+                /**
+                 * Handle keyboard shortcuts
+                 * @param {KeyboardEvent} e - The keyboard event
+                 */
+                const handleKeyboardShortcuts = (e) => {
+                    // Ctrl+Enter to generate subnets
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        e.preventDefault();
+                        generateSubnets();
+                    }
+                    
+                    // Ctrl+R to reset form
+                    if (e.ctrlKey && e.key === 'r') {
+                        e.preventDefault();
+                        resetForm();
+                    }
+                    
+                    // Ctrl+E to export
+                    if (e.ctrlKey && e.key === 'e') {
+                        e.preventDefault();
+                        exportToXLSX();
+                    }
+                };
+                
+                /**
+                 * Reset the form to default values
+                 */
+                const resetForm = () => {
+                    // Reset input fields to default values
+                    DOM.networkAddressInput.value = CONFIG.defaultNetworkAddress;
+                    DOM.maskBitsInput.value = CONFIG.defaultMaskBits;
+                    
+                    // Clear the subnets array and cached data
+                    state.subnets = [];
+                    state.cachedJoinData = null;
+                    
+                    // Hide results container but don't reset checkboxes
+                    DOM.resultsContainer.classList.add('hidden');
+                };
+                
+                /**
+                 * Generate subnet information based on input values
+                 */
+                const generateSubnets = () => {
+                    try {
+                        const networkAddress = DOM.networkAddressInput.value.trim();
+                        const maskBits = parseInt(DOM.maskBitsInput.value);
+                        
+                        // Enhanced validation
+                        if (!isValidIPv4(networkAddress)) {
+                            throw new Error("Please enter a valid IPv4 address");
+                        }
+                        
+                        if (isNaN(maskBits) || maskBits < 0 || maskBits > CONFIG.maxMaskBits) {
+                            throw new Error(`Mask bits must be between 0 and ${CONFIG.maxMaskBits}`);
+                        }
+                        
+                        // Normalize network address to ensure correct boundaries
+                        const inputIpInt = ipToInt(networkAddress);
+                        const mask = (0xffffffff << (32 - maskBits)) >>> 0;
+                        const normalizedNetworkInt = inputIpInt & mask;
+                        const normalizedNetworkAddress = intToIp(normalizedNetworkInt);
+                        
+                        // Calculate subnet information using the normalized network address
+                        state.subnets = [calculateSubnet(normalizedNetworkAddress, maskBits)];
+                        state.cachedJoinData = null; // Invalidate cache
+                        
+                        // Update the table with the calculated subnet
+                        updateTable();
+                        
+                        // Update the input field to show the normalized network address
+                        if (networkAddress !== normalizedNetworkAddress) {
+                            DOM.networkAddressInput.value = normalizedNetworkAddress;
+                            console.info(`Network address normalized from ${networkAddress} to ${normalizedNetworkAddress}`);
+                        }
+                    } catch (error) {
+                        alert(error.message);
+                        console.error("Error generating subnets:", error);
+                    }
+                };
+                
+                // IP Address validation and manipulation functions
+                
+                /**
+                 * Validates if a string is a valid IPv4 address
+                 * @param {string} ip - The IP address to validate
+                 * @returns {boolean} True if valid IPv4 address
+                 */
+                const isValidIPv4 = (ip) => {
+                    const regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+                    return regex.test(ip);
+                };
+                
+                /**
+                 * Converts an IP address string to its integer representation
+                 * @param {string} ip - The IP address as a string
+                 * @returns {number} The IP address as a 32-bit integer
+                 */
+                const ipToInt = (ip) => {
+                    const parts = ip.split('.');
+                    return (parseInt(parts[0], 10) << 24) | 
+                           (parseInt(parts[1], 10) << 16) | 
+                           (parseInt(parts[2], 10) << 8) | 
+                           parseInt(parts[3], 10);
+                };
+                
+                /**
+                 * Converts an integer to an IP address string
+                 * @param {number} int - The IP address as a 32-bit integer
+                 * @returns {string} The IP address as a string
+                 */
+                const intToIp = (int) => {
+                    return [
+                        (int >>> 24) & 255,
+                        (int >>> 16) & 255,
+                        (int >>> 8) & 255,
+                        int & 255
+                    ].join('.');
+                };
+                
+                /**
+                 * Calculates detailed subnet information for a given network address and mask
+                 * @param {string} networkAddress - The network address
+                 * @param {number} maskBits - The subnet mask bits
+                 * @returns {Object} An object containing subnet information
+                 */
+                const calculateSubnet = (networkAddress, maskBits) => {
+                    // Convert IP address to integer
+                    const ipInt = ipToInt(networkAddress);
+                    
+                    // Calculate subnet mask
+                    const mask = (0xffffffff >>> (32 - maskBits)) << (32 - maskBits);
+                    
+                    // Calculate network address (ensuring it's properly masked)
+                    const networkInt = ipInt & mask;
+                    const networkIP = intToIp(networkInt);
+                    
+                    // Calculate broadcast address
+                    const broadcastInt = networkInt | (~mask & 0xffffffff);
+                    const broadcastIP = intToIp(broadcastInt);
+                    
+                    // Calculate netmask in dotted decimal
+                    const netmaskIP = intToIp(mask);
+                    
+                    // Calculate number of hosts - use BigInt for very large subnets
+                    const hostCount = BigInt(1) << BigInt(32 - maskBits);
+                    const hosts = Number(hostCount - BigInt(2)); // Convert back to Number for compatibility
+                    const azureHosts = hosts > 5 ? hosts - 5 : 0;
+                    
+                    // Calculate first and last usable IP
+                    const firstUsableInt = networkInt + 1;
+                    const lastUsableInt = broadcastInt - 1;
+                    
+                    const firstUsableIP = intToIp(firstUsableInt);
+                    const lastUsableIP = intToIp(lastUsableInt);
+                    
+                    // Calculate Azure usable IPs (excluding first 4 and last 1)
+                    const azureFirstUsableInt = networkInt + 4; // First 4 are reserved
+                    const azureLastUsableInt = broadcastInt - 1; // Last 1 is reserved
+                    
+                    let azureFirstUsableIP = '';
+                    let azureLastUsableIP = '';
+                    
+                    if (azureFirstUsableInt <= azureLastUsableInt) {
+                        azureFirstUsableIP = intToIp(azureFirstUsableInt);
+                        azureLastUsableIP = intToIp(azureLastUsableInt);
+                    }
+                    
+                    // Return comprehensive subnet data
+                    return {
+                        networkAddress: networkIP,
+                        maskBits: maskBits,
+                        subnetAddress: `${networkIP}/${maskBits}`,
+                        netmask: netmaskIP,
+                        range: `${networkIP} - ${broadcastIP}`,
+                        usableIPs: `${firstUsableIP} - ${lastUsableIP}`,
+                        azureUsableIPs: azureFirstUsableInt <= azureLastUsableInt ? `${azureFirstUsableIP} - ${azureLastUsableIP}` : 'N/A',
+                        hosts: hosts,
+                        azureHosts: azureHosts,
+                        networkInt: networkInt,
+                        broadcastInt: broadcastInt,
+                        parents: [],  // Array to store all parent mask bits in hierarchy
+                        childIndex: 0 // To track if it's the first or second child (0 or 1)
+                    };
+                };
+                
+                /**
+                 * Divides a subnet into two equal subnets (adds one bit to mask)
+                 * @param {number} index - The index of the subnet to divide
+                 */
+                const divideSubnet = (index) => {
+                    try {
+                        if (index < 0 || index >= state.subnets.length) {
+                            throw new Error("Invalid subnet index");
+                        }
+                        
+                        const subnet = state.subnets[index];
+                        
+                        // Can't divide /32 subnets
+                        if (subnet.maskBits >= 31) {
+                            throw new Error("Cannot divide a subnet with mask bits >= 31");
+                        }
+                        
+                        // Calculate new mask bits (one more bit = divide by 2)
+                        const newMaskBits = subnet.maskBits + 1;
+                        
+                        // Create new parents array with current subnet added as parent
+                        const newParents = [...(subnet.parents || [])];
+                        newParents.push(subnet.maskBits);
+                        
+                        // Calculate first subnet
+                        const firstSubnet = calculateSubnet(subnet.networkAddress, newMaskBits);
+                        firstSubnet.parents = newParents;
+                        firstSubnet.childIndex = 0; // First child
+                        
+                        // Calculate second subnet
+                        const secondSubnetInt = subnet.networkInt + Math.pow(2, 32 - newMaskBits);
+                        const secondSubnetIP = intToIp(secondSubnetInt);
+                        const secondSubnet = calculateSubnet(secondSubnetIP, newMaskBits);
+                        secondSubnet.parents = newParents;
+                        secondSubnet.childIndex = 1; // Second child
+                        
+                        // Replace the original subnet with the two new ones
+                        state.subnets.splice(index, 1, firstSubnet, secondSubnet);
+                        
+                        // Invalidate cache
+                        state.cachedJoinData = null;
+                        
+                        // Update the table
+                        updateTable();
+                    } catch (error) {
+                        alert(error.message);
+                        console.error("Error dividing subnet:", error);
+                    }
+                };
+                
+                /**
+                 * Collapses two adjacent subnets into a parent subnet
+                 * @param {number} index - The index of the first subnet to collapse
+                 */
+                const collapseSubnets = (index) => {
+                    try {
+                        // Need at least two subnets to collapse
+                        if (state.subnets.length < 2 || index >= state.subnets.length - 1) {
+                            throw new Error("Cannot collapse this subnet (need a following subnet)");
+                        }
+                        
+                        const subnet1 = state.subnets[index];
+                        const subnet2 = state.subnets[index + 1];
+                        
+                        // Check if they have the same mask bits
+                        if (subnet1.maskBits !== subnet2.maskBits) {
+                            throw new Error("Can only collapse subnets with the same mask bits");
+                        }
+                        
+                        // Check if they're adjacent and can be collapsed
+                        if (!canCollapse(subnet1, subnet2)) {
+                            throw new Error("Subnets must be adjacent and properly aligned to collapse them");
+                        }
+                        
+                        // Calculate the parent subnet
+                        const newMaskBits = subnet1.maskBits - 1;
+                        const collapsedSubnet = calculateSubnet(subnet1.networkAddress, newMaskBits);
+                        
+                        // Preserve parent hierarchy
+                        preserveParentHierarchy(collapsedSubnet, subnet1, subnet2, newMaskBits);
+                        
+                        // Replace the two subnets with the collapsed one
+                        state.subnets.splice(index, 2, collapsedSubnet);
+                        
+                        // Invalidate cache
+                        state.cachedJoinData = null;
+                        
+                        // Update the table
+                        updateTable();
+                    } catch (error) {
+                        alert(error.message);
+                        console.error("Error collapsing subnets:", error);
+                    }
+                };
+                
+                /**
+                 * Preserves the parent hierarchy when collapsing subnets
+                 * @param {Object} collapsedSubnet - The new collapsed subnet
+                 * @param {Object} subnet1 - The first subnet being collapsed
+                 * @param {Object} subnet2 - The second subnet being collapsed
+                 * @param {number} newMaskBits - The new mask bits value
+                 */
+                const preserveParentHierarchy = (collapsedSubnet, subnet1, subnet2, newMaskBits) => {
+                    if (subnet1.parents.length > 0 && subnet2.parents.length > 0 && 
+                        subnet1.parents.length === subnet2.parents.length) {
+                        
+                        // Check if all parents except the last one match
+                        let parentsMatch = true;
+                        for (let i = 0; i < subnet1.parents.length - 1; i++) {
+                            if (subnet1.parents[i] !== subnet2.parents[i]) {
+                                parentsMatch = false;
+                                break;
+                            }
+                        }
+                        
+                        // If the last parent in both subnets is equal to newMaskBits, 
+                        // and other parents match, we can keep all parents except the last one
+                        if (parentsMatch && subnet1.parents[subnet1.parents.length - 1] === newMaskBits) {
+                            collapsedSubnet.parents = subnet1.parents.slice(0, -1);
+                            collapsedSubnet.childIndex = subnet1.childIndex; // Inherit child index
+                        }
+                    }
+                };
+                
+                /**
+                 * Joins multiple subnets into a single parent subnet at a specific mask level
+                 * @param {number} index - The index of the subnet that triggered the join
+                 * @param {number} parentMaskBits - The mask bits of the parent to join to
+                 */
+                const joinSubnet = (index) => {
+                    try {
+                        if (index < 0 || index >= state.subnets.length) {
+                            throw new Error("Invalid subnet index");
+                        }
+                        
+                        const parentMaskBits = parseInt(event.target.textContent.replace('/', ''));
+                        if (isNaN(parentMaskBits)) {
+                            throw new Error("Invalid parent mask bits");
+                        }
+                        
+                        // Find the subnet we're starting with
+                        const startSubnet = state.subnets[index];
+                        
+                        // Calculate parent network address
+                        const parentMask = (0xffffffff << (32 - parentMaskBits)) >>> 0;
+                        const parentNetworkInt = startSubnet.networkInt & parentMask;
+                        const parentNetwork = intToIp(parentNetworkInt);
+                        
+                        // Identify all subnets that would be part of this parent
+                        const subnetIndicesToRemove = [];
+                        let lowestIndex = Number.MAX_SAFE_INTEGER;
+                        
+                        for (let i = 0; i < state.subnets.length; i++) {
+                            const subnet = state.subnets[i];
+                            // Check if this subnet is part of the parent network and has a larger mask
+                            const subnetParentNetwork = subnet.networkInt & parentMask;
+                            
+                            if (subnetParentNetwork === parentNetworkInt && subnet.maskBits > parentMaskBits) {
+                                subnetIndicesToRemove.push(i);
+                                if (i < lowestIndex) {
+                                    lowestIndex = i;
+                                }
+                            }
+                        }
+                        
+                        if (subnetIndicesToRemove.length === 0) {
+                            return; // Nothing to join
+                        }
+                        
+                        // Create the parent subnet
+                        const parentSubnet = calculateSubnet(parentNetwork, parentMaskBits);
+                        
+                        // Preserve the higher-level parents when joining
+                        preserveHigherLevelParents(parentSubnet, subnetIndicesToRemove, parentMaskBits);
+                        
+                        // Remove all child subnets
+                        // Sort indices in descending order to avoid shifting problems
+                        subnetIndicesToRemove.sort((a, b) => b - a);
+                        for (const idx of subnetIndicesToRemove) {
+                            state.subnets.splice(idx, 1);
+                        }
+                        
+                        // Insert the parent subnet
+                        state.subnets.splice(lowestIndex, 0, parentSubnet);
+                        
+                        // Invalidate cache
+                        state.cachedJoinData = null;
+                        
+                        // Update the table
+                        updateTable();
+                    } catch (error) {
+                        alert(error.message);
+                        console.error("Error joining subnets:", error);
+                    }
+                };
+                
+                /**
+                 * Preserves higher-level parents when joining subnets
+                 * @param {Object} parentSubnet - The parent subnet being created
+                 * @param {Array<number>} subnetIndicesToRemove - Indices of subnets being joined
+                 * @param {number} parentMaskBits - The mask bits of the parent
+                 */
+                const preserveHigherLevelParents = (parentSubnet, subnetIndicesToRemove, parentMaskBits) => {
+                    const subnetsToRemove = subnetIndicesToRemove.map(idx => state.subnets[idx]);
+                    const allParents = new Set();
+                    
+                    for (const subnet of subnetsToRemove) {
+                        if (subnet.parents && subnet.parents.length > 0) {
+                            const parentIndex = subnet.parents.indexOf(parentMaskBits);
+                            if (parentIndex !== -1 && parentIndex > 0) {
+                                // Keep parents that are higher in the hierarchy
+                                for (let i = 0; i < parentIndex; i++) {
+                                    allParents.add(subnet.parents[i]);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Set the parent's hierarchy to include all higher-level parents
+                    if (allParents.size > 0) {
+                        parentSubnet.parents = [...allParents].sort((a, b) => b - a);
+                    }
+                    
+                    // Inherit childIndex from a child subnet if appropriate
+                    for (const subnet of subnetsToRemove) {
+                        if (subnet.parents && subnet.parents.includes(parentMaskBits)) {
+                            parentSubnet.childIndex = subnet.childIndex;
                             break;
                         }
                     }
+                };
+                
+                /**
+                 * Updates the subnet table display
+                 */
+                const updateTable = () => {
+                    const showingAnyColumns = Array.from(DOM.checkboxes).some(cb => cb.checked);
                     
-                    // If the last parent in both subnets is equal to newMaskBits, 
-                    // and other parents match, we can keep all parents except the last one
-                    if (parentsMatch && subnet1.parents[subnet1.parents.length - 1] === newMaskBits) {
-                        collapsedSubnet.parents = subnet1.parents.slice(0, -1);
-                        collapsedSubnet.childIndex = subnet1.childIndex; // Inherit child index
-                    }
-                }
-                
-                // Replace the two subnets with the collapsed one
-                subnets.splice(index, 2, collapsedSubnet);
-                
-                // Update the table
-                updateTable();
-            }
-            
-            // Find all children of a subnet that has been divided
-            function findChildSubnets(parentIndex) {
-                const result = [];
-                const parentSubnet = subnets[parentIndex];
-                const parentMaskBits = parentSubnet.maskBits;
-                
-                // Group subnets by their common parent mask bits
-                for (let i = 0; i < subnets.length; i++) {
-                    if (i !== parentIndex) {
-                        const subnet = subnets[i];
-                        // Check if this subnet has the parent as one of its parents
-                        if (subnet.parents && subnet.parents.includes(parentMaskBits)) {
-                            // Make sure this is a direct child of the parent (should have the next mask bit level)
-                            const parentIndex = subnet.parents.indexOf(parentMaskBits);
-                            if (parentIndex === subnet.parents.length - 1) {
-                                result.push(i);
-                            }
-                        }
-                    }
-                }
-                
-                return result;
-            }
-            
-            // Function to collapse a subnet at a specific parent level
-            function joinSubnet(index, parentMaskBits) {
-                // Find all subnets that share this parent
-                const subnetIndicesToRemove = [];
-                let lowestIndex = Number.MAX_SAFE_INTEGER;
-                let parentNetworkAddress;
-                
-                for (let i = 0; i < subnets.length; i++) {
-                    const subnet = subnets[i];
-                    if (subnet.parents && subnet.parents.includes(parentMaskBits)) {
-                        subnetIndicesToRemove.push(i);
-                        if (i < lowestIndex) {
-                            lowestIndex = i;
-                            // Get the network address of the parent by masking any child
-                            parentNetworkAddress = network_address(subnet.networkInt, parentMaskBits);
-                        }
-                    }
-                }
-                
-                if (subnetIndicesToRemove.length === 0) {
-                    return; // Nothing to join
-                }
-                
-                // Create the parent subnet
-                const parentSubnet = calculateSubnet(intToIp(parentNetworkAddress), parentMaskBits);
-                
-                // Keep parents that are higher in the hierarchy
-                const subnet = subnets[subnetIndicesToRemove[0]];
-                const parentIndex = subnet.parents.indexOf(parentMaskBits);
-                if (parentIndex > 0) {
-                    parentSubnet.parents = subnet.parents.slice(0, parentIndex);
-                    parentSubnet.childIndex = subnet.childIndex; // Inherit child index
-                }
-                
-                // Remove all child subnets
-                // Sort indices in descending order to avoid shifting problems
-                subnetIndicesToRemove.sort((a, b) => b - a);
-                for (const idx of subnetIndicesToRemove) {
-                    subnets.splice(idx, 1);
-                }
-                
-                // Insert the parent subnet
-                subnets.splice(lowestIndex, 0, parentSubnet);
-                
-                // Update the table
-                updateTable();
-            }
-            
-            // Helper function for network_address calculation
-            function network_address(ipInt, maskBits) {
-                const mask = (0xffffffff >>> (32 - maskBits)) << (32 - maskBits);
-                return ipInt & mask;
-            }
-            
-            function updateTable() {
-                // If no subnets or no checkboxes selected, hide the table
-                if (subnets.length === 0 || !Array.from(checkboxes).some(cb => cb.checked)) {
-                    resultsContainer.classList.add('hidden');
-                    return;
-                }
-                
-                // Show the results container
-                resultsContainer.classList.remove('hidden');
-                
-                // Organize parent-child relationships for display
-                const parentChildMap = new Map();
-                
-                // First find all unique parent masks and sort them
-                const allParentMasks = new Set();
-                subnets.forEach(subnet => {
-                    if (subnet.parents && subnet.parents.length > 0) {
-                        subnet.parents.forEach(parent => {
-                            allParentMasks.add(parent);
-                        });
-                    }
-                });
-                
-                // Convert to array and sort in DESCENDING order (largest to smallest)
-                const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
-                
-                // Create table headers based on selected checkboxes
-                let headerRow = '<tr><th>#</th>';
-                
-                if (document.getElementById('showSubnetAddress').checked)
-                    headerRow += '<th>Subnet Address</th>';
-                if (document.getElementById('showNetmask').checked)
-                    headerRow += '<th>Netmask</th>';
-                if (document.getElementById('showRange').checked)
-                    headerRow += '<th>Range of Addresses</th>';
-                if (document.getElementById('showUsableIPs').checked)
-                    headerRow += '<th>Usable IPs</th>';
-                if (document.getElementById('showAzureUsableIPs').checked)
-                    headerRow += '<th>Azure Usable IPs</th>';
-                if (document.getElementById('showHosts').checked)
-                    headerRow += '<th>Hosts</th>';
-                if (document.getElementById('showAzureHosts').checked)
-                    headerRow += '<th>Azure Hosts</th>';
-                if (document.getElementById('showDivide').checked)
-                    headerRow += '<th>Divide</th>';
-                if (document.getElementById('showCollapse').checked)
-                    headerRow += '<th>Collapse</th>';
-                
-                // Add "Join" column header with correct colspan
-                if (document.getElementById('showJoin').checked) {
-                    // +1 for the current subnet mask column
-                    const joinColspan = sortedParentMasks.length + 1;
-                    headerRow += `<th class="join-header" colspan="${joinColspan}">Join</th>`;
-                }
-                
-                headerRow += '</tr>';
-                tableHeader.innerHTML = headerRow;
-                
-                // For each subnet, organize the mask info for display
-                subnets.forEach(subnet => {
-                    // Create a map of parent masks to their positions in the sorted array
-                    const maskPositions = new Map();
-                    if (subnet.parents && subnet.parents.length > 0) {
-                        subnet.parents.forEach(parent => {
-                            const position = sortedParentMasks.indexOf(parent);
-                            maskPositions.set(parent, position);
-                        });
-                    }
-                    subnet.maskPositions = maskPositions;
-                });
-                
-                // Calculate rowspans for each parent mask across all subnets
-                const maskRowspans = new Map();
-                
-                for (const parentMask of sortedParentMasks) {
-                    // Group subnets by the same parent mask at each position
-                    const groupsByPosition = new Map();
-                    
-                    // First pass - identify all positions where this parent mask appears
-                    subnets.forEach((subnet, index) => {
-                        if (subnet.parents && subnet.parents.includes(parentMask)) {
-                            const position = subnet.maskPositions.get(parentMask);
-                            if (!groupsByPosition.has(position)) {
-                                groupsByPosition.set(position, []);
-                            }
-                            groupsByPosition.get(position).push(index);
-                        }
-                    });
-                    
-                    // Second pass - identify consecutive groups for rowspans
-                    for (const [position, indices] of groupsByPosition.entries()) {
-                        let currentGroup = [];
-                        for (let i = 0; i < indices.length; i++) {
-                            const index = indices[i];
-                            
-                            if (currentGroup.length === 0 || indices[i] === indices[i-1] + 1) {
-                                // Continue current group
-                                currentGroup.push(index);
-                            } else {
-                                // Start a new group
-                                maskRowspans.set(`${parentMask}-${position}-${currentGroup[0]}`, currentGroup.length);
-                                currentGroup = [index];
-                            }
-                        }
-                        
-                        // Don't forget the last group
-                        if (currentGroup.length > 0) {
-                            maskRowspans.set(`${parentMask}-${position}-${currentGroup[0]}`, currentGroup.length);
-                        }
-                    }
-                }
-                
-                // Create table rows with subnet data
-                let tableRows = '';
-                
-                // Keep track of which cells we've already output via rowspan
-                const cellsOutput = new Set();
-                
-                subnets.forEach((subnet, index) => {
-                    tableRows += `<tr>`;
-                    tableRows += `<td>${index + 1}</td>`;
-                    
-                    // Add standard columns
-                    if (document.getElementById('showSubnetAddress').checked)
-                        tableRows += `<td>${subnet.subnetAddress}</td>`;
-                    if (document.getElementById('showNetmask').checked)
-                        tableRows += `<td>${subnet.netmask}</td>`;
-                    if (document.getElementById('showRange').checked)
-                        tableRows += `<td>${subnet.range}</td>`;
-                    if (document.getElementById('showUsableIPs').checked)
-                        tableRows += `<td>${subnet.usableIPs}</td>`;
-                    if (document.getElementById('showAzureUsableIPs').checked)
-                        tableRows += `<td>${subnet.azureUsableIPs}</td>`;
-                    if (document.getElementById('showHosts').checked)
-                        tableRows += `<td>${subnet.hosts.toLocaleString()}</td>`;
-                    if (document.getElementById('showAzureHosts').checked)
-                        tableRows += `<td>${subnet.azureHosts.toLocaleString()}</td>`;
-                    if (document.getElementById('showDivide').checked)
-                        tableRows += `<td><button class="action-button" onclick="window.divideSubnet(${index})">Divide</button></td>`;
-                    if (document.getElementById('showCollapse').checked)
-                        tableRows += `<td><button class="action-button" onclick="window.collapseSubnets(${index})">Collapse</button></td>`;
-                    
-                    // Add Join columns with current subnet FIRST, then parent columns
-                    if (document.getElementById('showJoin').checked) {
-                        // Always add current subnet mask as the FIRST column
-                        tableRows += `<td class="maskSpan">/${subnet.maskBits}</td>`;
-                        
-                        // For each possible parent mask position (in DESCENDING order)
-                        for (let i = 0; i < sortedParentMasks.length; i++) {
-                            const parentMask = sortedParentMasks[i];
-                            
-                            // Check if this subnet has this parent mask
-                            if (subnet.parents && subnet.parents.includes(parentMask)) {
-                                // Check if we've already output this cell (due to rowspan)
-                                const cellKey = `${parentMask}-${i}-${index}`;
-                                
-                                if (!cellsOutput.has(cellKey)) {
-                                    // Calculate rowspan
-                                    const rowspan = maskRowspans.get(cellKey) || 1;
-                                    
-                                    // Output the cell
-                                    tableRows += `<td class="maskSpanJoinable" rowspan="${rowspan}" 
-                                        onclick="window.joinSubnet(${index}, ${parentMask})">/${parentMask}</td>`;
-                                    
-                                    // Mark as output
-                                    cellsOutput.add(cellKey);
-                                    
-                                    // Also mark subsequent rows that are covered by this rowspan
-                                    for (let j = 1; j < rowspan; j++) {
-                                        cellsOutput.add(`${parentMask}-${i}-${index + j}`);
-                                    }
-                                }
-                            } else {
-                                // This subnet doesn't have this parent mask - add empty cell if needed
-                                const cellKey = `empty-${i}-${index}`;
-                                
-                                if (!cellsOutput.has(cellKey)) {
-                                    tableRows += `<td></td>`;
-                                    cellsOutput.add(cellKey);
-                                }
-                            }
-                        }
+                    // If no subnets or no checkboxes selected, hide the table
+                    if (state.subnets.length === 0 || !showingAnyColumns) {
+                        DOM.resultsContainer.classList.add('hidden');
+                        return;
                     }
                     
-                    tableRows += '</tr>';
-                });
-                
-                tableBody.innerHTML = tableRows;
-            }
-            
-            // Helper function to calculate rowspan for a parent cell
-            function calculateParentRowspan(subnet, parentIndex) {
-                const parentMask = subnet.parents[parentIndex];
-                
-                // Count how many subnets share this parent at the same level
-                let count = 0;
-                for (const s of subnets) {
-                    if (s.parents && 
-                        s.parents.length > parentIndex && 
-                        s.parents[parentIndex] === parentMask) {
-                        count++;
+                    // Show the results container
+                    DOM.resultsContainer.classList.remove('hidden');
+                    
+                    // Get all unique parent masks for join column
+                    const allParentMasks = getAllParentMasks();
+                    const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
+                    
+                    // Create table headers based on selected checkboxes
+                    DOM.tableHeader.innerHTML = createTableHeaders(sortedParentMasks);
+                    
+                    // Build join column structure using a multi-level approach
+                    // Use cached data if available and valid
+                    if (!state.cachedJoinData) {
+                        state.cachedJoinData = buildJoinColumnStructure();
                     }
-                }
+                    const joinData = state.cachedJoinData;
+                    
+                    // Create table rows with subnet data
+                    DOM.tableBody.innerHTML = createTableRows(joinData, sortedParentMasks);
+                };
                 
-                return count;
-            }
-            
-            function exportToXLSX() {
-                if (subnets.length === 0) {
-                    alert("No data to export");
-                    return;
-                }
-                
-                // Create worksheet data
-                const ws_data = [];
-                
-                // Add header row
-                const header = ['#'];
-                
-                if (document.getElementById('showSubnetAddress').checked)
-                    header.push('Subnet Address');
-                if (document.getElementById('showNetmask').checked)
-                    header.push('Netmask');
-                if (document.getElementById('showRange').checked)
-                    header.push('Range of Addresses');
-                if (document.getElementById('showUsableIPs').checked)
-                    header.push('Usable IPs');
-                if (document.getElementById('showAzureUsableIPs').checked)
-                    header.push('Azure Usable IPs');
-                if (document.getElementById('showHosts').checked)
-                    header.push('Hosts');
-                if (document.getElementById('showAzureHosts').checked)
-                    header.push('Azure Hosts');
-                
-                // Add Join column(s)
-                if (document.getElementById('showJoin').checked) {
-                    // Find all unique parent masks and sort them
+                /**
+                 * Gets all unique parent masks from all subnets
+                 * @returns {Set<number>} Set of unique parent mask bits
+                 */
+                const getAllParentMasks = () => {
                     const allParentMasks = new Set();
-                    subnets.forEach(subnet => {
+                    state.subnets.forEach(subnet => {
                         if (subnet.parents && subnet.parents.length > 0) {
                             subnet.parents.forEach(parent => {
                                 allParentMasks.add(parent);
                             });
                         }
                     });
-                    
-                    // Convert to array and sort in DESCENDING order (largest to smallest)
-                    const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
-                    
-                    // Add header for current mask FIRST
-                    header.push('Current Mask');
-                    
-                    // Add headers for each parent mask level
-                    for (const parentMask of sortedParentMasks) {
-                        header.push(`Parent /${parentMask}`);
-                    }
-                }
+                    return allParentMasks;
+                };
                 
-                ws_data.push(header);
-                
-                // Add data rows
-                subnets.forEach((subnet, index) => {
-                    const row = [index + 1];
+                /**
+                 * Creates the table header HTML
+                 * @param {Array<number>} sortedParentMasks - Sorted array of parent mask bits
+                 * @returns {string} HTML string for table header
+                 */
+                const createTableHeaders = (sortedParentMasks) => {
+                    let headerRow = '<tr><th>#</th>';
                     
                     if (document.getElementById('showSubnetAddress').checked)
-                        row.push(subnet.subnetAddress);
+                        headerRow += '<th>Subnet Address</th>';
                     if (document.getElementById('showNetmask').checked)
-                        row.push(subnet.netmask);
+                        headerRow += '<th>Netmask</th>';
                     if (document.getElementById('showRange').checked)
-                        row.push(subnet.range);
+                        headerRow += '<th>Range of Addresses</th>';
                     if (document.getElementById('showUsableIPs').checked)
-                        row.push(subnet.usableIPs);
+                        headerRow += '<th>Usable IPs</th>';
                     if (document.getElementById('showAzureUsableIPs').checked)
-                        row.push(subnet.azureUsableIPs);
+                        headerRow += '<th>Azure Usable IPs</th>';
                     if (document.getElementById('showHosts').checked)
-                        row.push(subnet.hosts);
+                        headerRow += '<th>Hosts</th>';
                     if (document.getElementById('showAzureHosts').checked)
-                        row.push(subnet.azureHosts);
+                        headerRow += '<th>Azure Hosts</th>';
+                    if (document.getElementById('showDivide').checked)
+                        headerRow += '<th>Divide</th>';
+                    if (document.getElementById('showCollapse').checked)
+                        headerRow += '<th>Collapse</th>';
                     
-                    // Add Join data with current mask first
+                    // Add "Join" column header with correct colspan
                     if (document.getElementById('showJoin').checked) {
-                        // Find all unique parent masks and sort them
-                        const allParentMasks = new Set();
-                        subnets.forEach(s => {
-                            if (s.parents && s.parents.length > 0) {
-                                s.parents.forEach(parent => {
-                                    allParentMasks.add(parent);
-                                });
-                            }
-                        });
+                        // +1 for the current subnet mask column
+                        const joinColspan = sortedParentMasks.length + 1;
+                        headerRow += `<th class="join-header" colspan="${joinColspan}">Join</th>`;
+                    }
+                    
+                    headerRow += '</tr>';
+                    return headerRow;
+                };
+                
+                /**
+                 * Creates the table rows HTML
+                 * @param {Object} joinData - The join column structure data
+                 * @param {Array<number>} sortedParentMasks - Sorted array of parent mask bits
+                 * @returns {string} HTML string for table rows
+                 */
+                const createTableRows = (joinData, sortedParentMasks) => {
+                    let tableRows = '';
+                    
+                    state.subnets.forEach((subnet, index) => {
+                        tableRows += `<tr>`;
+                        tableRows += `<td>${index + 1}</td>`;
                         
-                        // Convert to array and sort in DESCENDING order (largest to smallest)
-                        const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
+                        // Add standard columns
+                        if (document.getElementById('showSubnetAddress').checked)
+                            tableRows += `<td>${subnet.subnetAddress}</td>`;
+                        if (document.getElementById('showNetmask').checked)
+                            tableRows += `<td>${subnet.netmask}</td>`;
+                        if (document.getElementById('showRange').checked)
+                            tableRows += `<td>${subnet.range}</td>`;
+                        if (document.getElementById('showUsableIPs').checked)
+                            tableRows += `<td>${subnet.usableIPs}</td>`;
+                        if (document.getElementById('showAzureUsableIPs').checked)
+                            tableRows += `<td>${subnet.azureUsableIPs}</td>`;
+                        if (document.getElementById('showHosts').checked)
+                            tableRows += `<td>${subnet.hosts.toLocaleString()}</td>`;
+                        if (document.getElementById('showAzureHosts').checked)
+                            tableRows += `<td>${subnet.azureHosts.toLocaleString()}</td>`;
+                        if (document.getElementById('showDivide').checked)
+                            tableRows += `<td><button class="action-button" onclick="window.divideSubnet(${index})">Divide</button></td>`;
+                        if (document.getElementById('showCollapse').checked)
+                            tableRows += `<td><button class="action-button" onclick="window.collapseSubnets(${index})">Collapse</button></td>`;
                         
-                        // Add current mask FIRST
-                        row.push(`/${subnet.maskBits}`);
+                        // Add Join columns
+                        if (document.getElementById('showJoin').checked) {
+                            tableRows += createJoinCell(joinData, index, subnet, sortedParentMasks);
+                        }
                         
-                        // For each parent mask, add value if this subnet has it
-                        for (const parentMask of sortedParentMasks) {
-                            if (subnet.parents && subnet.parents.includes(parentMask)) {
-                                row.push(`/${parentMask}`);
-                            } else {
-                                row.push('');
+                        tableRows += '</tr>';
+                    });
+                    
+                    return tableRows;
+                };
+                
+                /**
+                 * Creates the join cell HTML for a specific subnet
+                 * @param {Object} joinData - The join column structure data
+                 * @param {number} index - The subnet index
+                 * @param {Object} subnet - The subnet object
+                 * @param {Array<number>} sortedParentMasks - Sorted array of parent mask bits
+                 * @returns {string} HTML string for join cell
+                 */
+                const createJoinCell = (joinData, index, subnet, sortedParentMasks) => {
+                    // Get the join column data for this row
+                    const rowData = joinData.rowData[index] || { cells: [] };
+                    
+                    // If no cells, just show the current mask
+                    if (rowData.cells.length === 0) {
+                        return `<td class="maskSpan" colspan="${sortedParentMasks.length + 1}">/${subnet.maskBits}</td>`;
+                    }
+                    
+                    let joinCellHtml = '';
+                    
+                    // Add each cell for this row
+                    for (const cell of rowData.cells) {
+                        if (cell.skip) continue; // This cell is covered by a rowspan from above
+                        
+                        const classNames = cell.joinable ? 'maskSpanJoinable' : 'maskSpan';
+                        const rightAlign = cell.rightAlign ? 'text-right' : '';
+                        const onClick = cell.joinable ? `onclick="window.joinSubnet(${index}, ${cell.maskBits})"` : '';
+                        const rowspanAttr = cell.rowspan > 1 ? `rowspan="${cell.rowspan}"` : '';
+                        const colspanAttr = cell.colspan > 1 ? `colspan="${cell.colspan}"` : '';
+                        
+                        // Add title attribute for better UX
+                        const title = cell.joinable 
+                            ? `Click to join subnets to /${cell.maskBits} network` 
+                            : `Current subnet mask: /${cell.maskBits}`;
+                        
+                        joinCellHtml += `<td class="${classNames} ${rightAlign}" ${rowspanAttr} ${colspanAttr} ${onClick} title="${title}">/${cell.maskBits}</td>`;
+                    }
+                    
+                    return joinCellHtml;
+                };
+                
+                // Join Column Structure Functions
+                
+                /**
+                 * Builds the join column structure for proper parent-child visualization
+                 * @returns {Object} Join column structure data
+                 */
+                const buildJoinColumnStructure = () => {
+                    // This will hold our join column structure
+                    const result = {
+                        columnCount: 0,
+                        rowData: {} // Maps subnet index to row data
+                    };
+                    
+                    // Get all unique parent masks
+                    const allParentMasks = getAllParentMasks();
+                    
+                    // Sort parent masks in descending order (largest first)
+                    const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
+                    
+                    // Build multi-level parent-child hierarchy
+                    const parentChildHierarchy = buildParentChildHierarchy(sortedParentMasks);
+                    
+                    // Create joinable groups from hierarchy
+                    const joinableGroups = createJoinableGroups(parentChildHierarchy);
+                    
+                    // Calculate maximum columns needed
+                    const maxParents = Math.max(
+                        ...state.subnets.map(subnet => subnet.parents ? subnet.parents.length : 0),
+                        0 // Ensure at least 0 if subnets array is empty
+                    );
+                    result.columnCount = maxParents + 1; // +1 for current mask
+                    
+                    // Build row data for each subnet
+                    for (let i = 0; i < state.subnets.length; i++) {
+                        result.rowData[i] = buildRowData(i, joinableGroups, result.columnCount);
+                    }
+                    
+                    return result;
+                };
+                
+                /**
+                 * Builds parent-child hierarchy for join structure
+                 * @param {Array<number>} sortedParentMasks - Sorted array of parent mask bits
+                 * @returns {Object} Parent-child hierarchy structure
+                 */
+                const buildParentChildHierarchy = (sortedParentMasks) => {
+                    const parentChildHierarchy = {};
+                    
+                    // Initialize the hierarchy map for each parent mask
+                    for (const mask of sortedParentMasks) {
+                        parentChildHierarchy[mask] = {};
+                    }
+                    
+                    // For each subnet, map its relation to each of its parents
+                    for (let i = 0; i < state.subnets.length; i++) {
+                        const subnet = state.subnets[i];
+                        if (subnet.parents && subnet.parents.length > 0) {
+                            // For each parent this subnet has
+                            for (const parentMask of subnet.parents) {
+                                // Calculate parent network address
+                                const parentMask32 = (0xffffffff << (32 - parentMask)) >>> 0;
+                                const parentNetworkInt = subnet.networkInt & parentMask32;
+                                const parentKey = `${parentMask}-${parentNetworkInt}`;
+                                
+                                // Create/update parent entry in hierarchy
+                                if (!parentChildHierarchy[parentMask][parentKey]) {
+                                    parentChildHierarchy[parentMask][parentKey] = {
+                                        maskBits: parentMask,
+                                        networkInt: parentNetworkInt,
+                                        children: []
+                                    };
+                                }
+                                
+                                // Add this subnet as a child
+                                if (!parentChildHierarchy[parentMask][parentKey].children.includes(i)) {
+                                    parentChildHierarchy[parentMask][parentKey].children.push(i);
+                                }
                             }
                         }
                     }
                     
-                    ws_data.push(row);
-                });
+                    // Add adjacency-based relationships
+                    addAdjacencyRelationships(parentChildHierarchy);
+                    
+                    return parentChildHierarchy;
+                };
                 
-                // Create workbook and worksheet
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet(ws_data);
+                /**
+                 * Adds adjacency-based relationships to parent-child hierarchy
+                 * @param {Object} parentChildHierarchy - The parent-child hierarchy structure
+                 */
+                const addAdjacencyRelationships = (parentChildHierarchy) => {
+                    for (let i = 0; i < state.subnets.length - 1; i++) {
+                        const subnet1 = state.subnets[i];
+                        const subnet2 = state.subnets[i + 1];
+                        
+                        if (canCollapse(subnet1, subnet2)) {
+                            const parentMask = subnet1.maskBits - 1;
+                            const parentMask32 = (0xffffffff << (32 - parentMask)) >>> 0;
+                            const parentNetworkInt = subnet1.networkInt & parentMask32;
+                            const parentKey = `${parentMask}-${parentNetworkInt}`;
+                            
+                            // Create or update parent entry
+                            if (!parentChildHierarchy[parentMask]) {
+                                parentChildHierarchy[parentMask] = {};
+                            }
+                            
+                            if (!parentChildHierarchy[parentMask][parentKey]) {
+                                parentChildHierarchy[parentMask][parentKey] = {
+                                    maskBits: parentMask,
+                                    networkInt: parentNetworkInt,
+                                    children: []
+                                };
+                            }
+                            
+                            // Add both subnets as children
+                            const children = parentChildHierarchy[parentMask][parentKey].children;
+                            if (!children.includes(i)) children.push(i);
+                            if (!children.includes(i+1)) children.push(i+1);
+                        }
+                    }
+                };
                 
-                // Add worksheet to workbook
-                XLSX.utils.book_append_sheet(wb, ws, "Subnet Calculations");
+                /**
+                 * Creates joinable groups from parent-child hierarchy
+                 * @param {Object} parentChildHierarchy - The parent-child hierarchy structure
+                 * @returns {Array<Object>} Array of joinable groups
+                 */
+                const createJoinableGroups = (parentChildHierarchy) => {
+                    const joinableGroups = [];
+                    
+                    // Convert hierarchy to joinable groups
+                    for (const parentMask in parentChildHierarchy) {
+                        for (const parentKey in parentChildHierarchy[parentMask]) {
+                            const parent = parentChildHierarchy[parentMask][parentKey];
+                            if (parent.children.length >= 2) { // At least 2 children needed to join
+                                joinableGroups.push({
+                                    maskBits: parent.maskBits,
+                                    networkInt: parent.networkInt,
+                                    children: [...parent.children].sort((a, b) => a - b)
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Sort joinable groups by mask bits (largest first)
+                    return joinableGroups.sort((a, b) => b.maskBits - a.maskBits);
+                };
                 
-                // Generate filename with timestamp
-                const now = new Date();
-                const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-                const filename = `subnet_calculations_${timestamp}.xlsx`;
+                /**
+                 * Builds row data for a specific subnet in the join structure
+                 * @param {number} index - The subnet index
+                 * @param {Array<Object>} joinableGroups - Array of joinable groups
+                 * @param {number} columnCount - Total number of columns
+                 * @returns {Object} Row data structure
+                 */
+                const buildRowData = (index, joinableGroups, columnCount) => {
+                    const subnet = state.subnets[index];
+                    const rowData = { cells: [] };
+                    
+                    // Find all groups this subnet belongs to
+                    const subnetGroups = joinableGroups.filter(group => group.children.includes(index));
+                    
+                    if (subnetGroups.length === 0) {
+                        // No parent groups, just show the current mask
+                        rowData.cells.push({
+                            maskBits: subnet.maskBits,
+                            colspan: columnCount,
+                            rowspan: 1,
+                            joinable: false
+                        });
+                    } else {
+                        // Calculate space for current mask
+                        const emptyColspan = columnCount - subnetGroups.length;
+                        
+                        // Add current mask with right alignment
+                        rowData.cells.push({
+                            maskBits: subnet.maskBits,
+                            colspan: emptyColspan,
+                            rowspan: 1,
+                            rightAlign: true,
+                            joinable: false
+                        });
+                        
+                        // Add each parent mask that applies to this subnet
+                        for (const group of subnetGroups) {
+                            // Only add cell for first subnet in group
+                            if (index === Math.min(...group.children)) {
+                                const rowspan = group.children.filter(
+                                    childIdx => childIdx >= index && childIdx < index + group.children.length
+                                ).length;
+                                
+                                rowData.cells.push({
+                                    maskBits: group.maskBits,
+                                    colspan: 1,
+                                    rowspan: rowspan,
+                                    joinable: true
+                                });
+                            }
+                        }
+                    }
+                    
+                    return rowData;
+                };
                 
-                // Export to file
-                XLSX.writeFile(wb, filename);
-            }
-            
-            // Expose these functions to the global scope so they can be called from HTML
-            window.divideSubnet = divideSubnet;
-            window.collapseSubnets = collapseSubnets;
-            window.joinSubnet = joinSubnet;
-    });
+                /**
+                 * Checks if two subnets can be collapsed into a parent subnet
+                 * @param {Object} subnet1 - First subnet
+                 * @param {Object} subnet2 - Second subnet
+                 * @returns {boolean} True if subnets can be collapsed
+                 */
+                const canCollapse = (subnet1, subnet2) => {
+                    // Must have same mask bits
+                    if (subnet1.maskBits !== subnet2.maskBits) {
+                        return false;
+                    }
+                    
+                    // Must be adjacent
+                    const subnet1Size = Math.pow(2, 32 - subnet1.maskBits);
+                    if (subnet1.networkInt + subnet1Size !== subnet2.networkInt) {
+                        return false;
+                    }
+                    
+                    // Must align to a proper subnet boundary
+                    const parentMaskBits = subnet1.maskBits - 1;
+                    const parentMask = (0xffffffff << (32 - parentMaskBits)) >>> 0;
+                    
+                    return (subnet1.networkInt & parentMask) === (subnet2.networkInt & parentMask);
+                };
+                
+                /**
+                 * Finds a sibling subnet for the given parent mask
+                 * @param {number} index - Index of the subnet
+                 * @param {number} parentMaskBits - Parent mask bits to check for
+                 * @returns {number} Index of sibling subnet or -1 if not found
+                 */
+                const findSiblingForParent = (index, parentMaskBits) => {
+                    const subnet = state.subnets[index];
+                    
+                    // Calculate parent network
+                    const parentMask = (0xffffffff << (32 - parentMaskBits)) >>> 0;
+                    const parentNetworkInt = subnet.networkInt & parentMask;
+                    
+                    // Calculate subnet size at this level
+                    const subnetSize = Math.pow(2, 32 - subnet.maskBits);
+                    
+                    // Expected sibling position depends on child index
+                    let siblingNetworkInt;
+                    if (subnet.childIndex === 0) {
+                        siblingNetworkInt = subnet.networkInt + subnetSize;
+                    } else {
+                        siblingNetworkInt = subnet.networkInt - subnetSize;
+                    }
+                    
+                    // Look for a matching subnet
+                    for (let i = 0; i < state.subnets.length; i++) {
+                        if (i !== index && 
+                            state.subnets[i].networkInt === siblingNetworkInt &&
+                            state.subnets[i].maskBits === subnet.maskBits) {
+                            
+                            // Verify it's part of the same parent network
+                            const siblingParentNetwork = state.subnets[i].networkInt & parentMask;
+                            if (siblingParentNetwork === parentNetworkInt) {
+                                return i;
+                            }
+                        }
+                    }
+                    
+                    return -1;
+                };
+                
+                /**
+                 * Helper function for network_address calculation
+                 * @param {number} ipInt - IP address as integer
+                 * @param {number} maskBits - Mask bits
+                 * @returns {number} Network address as integer
+                 */
+                const networkAddress = (ipInt, maskBits) => {
+                    const mask = (0xffffffff << (32 - maskBits)) >>> 0;
+                    return ipInt & mask;
+                };
+                
+                /**
+                 * Finds all joinable mask bits for a subnet (for export)
+                 * @param {number} index - The subnet index
+                 * @returns {Array<number>} Array of joinable mask bits
+                 */
+                const findJoinableMasks = (index) => {
+                    const subnet = state.subnets[index];
+                    const joinableMasks = new Set();
+                    
+                    // Add masks from division history
+                    if (subnet.parents && subnet.parents.length > 0) {
+                        for (const parentMask of subnet.parents) {
+                            // Only add if we can find a matching sibling for this parent
+                            const siblingIndex = findSiblingForParent(index, parentMask);
+                            if (siblingIndex !== -1) {
+                                joinableMasks.add(parentMask);
+                            }
+                        }
+                    }
+                    
+                    // Add mask from adjacent subnet (if collapsible)
+                    if (index < state.subnets.length - 1) {
+                        const nextSubnet = state.subnets[index + 1];
+                        if (canCollapse(subnet, nextSubnet)) {
+                            joinableMasks.add(subnet.maskBits - 1);
+                        }
+                    }
+                    
+                    if (index > 0) {
+                        const prevSubnet = state.subnets[index - 1];
+                        if (canCollapse(prevSubnet, subnet)) {
+                            joinableMasks.add(subnet.maskBits - 1);
+                        }
+                    }
+                    
+                    // Convert to array and sort in descending order
+                    return Array.from(joinableMasks).sort((a, b) => b - a);
+                };
+                
+                /**
+                 * Exports subnet data to XLSX file
+                 */
+                const exportToXLSX = () => {
+                    try {
+                        if (state.subnets.length === 0) {
+                            throw new Error("No data to export");
+                        }
+                        
+                        // Create worksheet data
+                        const ws_data = [];
+                        
+                        // Build the join column structure (same as in the browser)
+                        const joinData = state.cachedJoinData || buildJoinColumnStructure();
+                        
+                        // Get all unique parent masks
+                        const allParentMasks = getAllParentMasks();
+                        const sortedParentMasks = Array.from(allParentMasks).sort((a, b) => b - a);
+                        
+                        // Calculate how many join columns we need
+                        const joinColumnCount = sortedParentMasks.length + 1; // +1 for current mask
+                        
+                        // Add header row
+                        const header = createExcelHeader(joinColumnCount);
+                        ws_data.push(header);
+                        
+                        // Track cells that need to be merged
+                        const merges = [];
+                        
+                        // If join is enabled, merge the "Join" header cells
+                        addJoinHeaderMerge(header, joinColumnCount, merges);
+                        
+                        // Add data rows
+                        addExcelDataRows(ws_data, joinData, joinColumnCount, merges);
+                        
+                        // Create workbook and worksheet
+                        const wb = XLSX.utils.book_new();
+                        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+                        
+                        // Add merges to the worksheet
+                        ws['!merges'] = merges;
+                        
+                        // Add styling to the worksheet
+                        applyExcelStyling(ws, header, ws_data);
+                        
+                        // Add worksheet to workbook
+                        XLSX.utils.book_append_sheet(wb, ws, "Subnet Calculations");
+                        
+                        // Generate filename with timestamp
+                        const timestamp = generateTimestamp();
+                        const filename = `subnet_calculations_${timestamp}.xlsx`;
+                        
+                        // Export to file
+                        XLSX.writeFile(wb, filename);
+                    } catch (error) {
+                        alert(error.message);
+                        console.error("Error exporting to XLSX:", error);
+                    }
+                };
+                
+                /**
+                 * Creates Excel header row
+                 * @param {number} joinColumnCount - Number of join columns
+                 * @returns {Array<string>} Header row array
+                 */
+                const createExcelHeader = (joinColumnCount) => {
+                    const header = ['#'];
+                    
+                    if (document.getElementById('showSubnetAddress').checked)
+                        header.push('Subnet Address');
+                    if (document.getElementById('showNetmask').checked)
+                        header.push('Netmask');
+                    if (document.getElementById('showRange').checked)
+                        header.push('Range of Addresses');
+                    if (document.getElementById('showUsableIPs').checked)
+                        header.push('Usable IPs');
+                    if (document.getElementById('showAzureUsableIPs').checked)
+                        header.push('Azure Usable IPs');
+                    if (document.getElementById('showHosts').checked)
+                        header.push('Hosts');
+                    if (document.getElementById('showAzureHosts').checked)
+                        header.push('Azure Hosts');
+                    
+                    // Add join column headers (using a merged cell for the "Join" header)
+                    if (document.getElementById('showJoin').checked) {
+                        for (let i = 0; i < joinColumnCount; i++) {
+                            header.push(i === 0 ? 'Join' : ''); // First column is 'Join', others are empty for merging
+                        }
+                    }
+                    
+                    return header;
+                };
+                
+                /**
+                 * Adds join header merge to merges array
+                 * @param {Array<string>} header - Header row array
+                 * @param {number} joinColumnCount - Number of join columns
+                 * @param {Array<Object>} merges - Merges array to add to
+                 */
+                const addJoinHeaderMerge = (header, joinColumnCount, merges) => {
+                    if (document.getElementById('showJoin').checked) {
+                        // Calculate the base column index for join columns
+                        const joinStartCol = header.length - joinColumnCount;
+                        
+                        // Add a merge for the "Join" header
+                        merges.push({
+                            s: { r: 0, c: joinStartCol },
+                            e: { r: 0, c: joinStartCol + joinColumnCount - 1 }
+                        });
+                    }
+                };
+                
+                /**
+                 * Adds data rows to Excel worksheet
+                 * @param {Array<Array<string>>} ws_data - Worksheet data
+                 * @param {Object} joinData - Join column structure data
+                 * @param {number} joinColumnCount - Number of join columns
+                 * @param {Array<Object>} merges - Merges array to add to
+                 */
+                const addExcelDataRows = (ws_data, joinData, joinColumnCount, merges) => {
+                    state.subnets.forEach((subnet, index) => {
+                        const row = [index + 1];
+                        
+                        if (document.getElementById('showSubnetAddress').checked)
+                            row.push(subnet.subnetAddress);
+                        if (document.getElementById('showNetmask').checked)
+                            row.push(subnet.netmask);
+                        if (document.getElementById('showRange').checked)
+                            row.push(subnet.range);
+                        if (document.getElementById('showUsableIPs').checked)
+                            row.push(subnet.usableIPs);
+                        if (document.getElementById('showAzureUsableIPs').checked)
+                            row.push(subnet.azureUsableIPs);
+                        if (document.getElementById('showHosts').checked)
+                            row.push(subnet.hosts);
+                        if (document.getElementById('showAzureHosts').checked)
+                            row.push(subnet.azureHosts);
+                        
+                        // Add join columns, mirroring the structure from the browser UI
+                        if (document.getElementById('showJoin').checked) {
+                            addJoinColumns(row, joinData, index, joinColumnCount, merges, ws_data.length);
+                        }
+                        
+                        ws_data.push(row);
+                    });
+                };
+                
+                /**
+                 * Adds join columns to Excel row
+                 * @param {Array<string>} row - Row data array
+                 * @param {Object} joinData - Join column structure data
+                 * @param {number} index - Subnet index
+                 * @param {number} joinColumnCount - Number of join columns
+                 * @param {Array<Object>} merges - Merges array to add to
+                 * @param {number} rowIndex - Current row index in worksheet
+                 */
+                const addJoinColumns = (row, joinData, index, joinColumnCount, merges, rowIndex) => {
+                    // Calculate the base column index for join columns
+                    const joinStartCol = row.length;
+                    
+                    // Get the join column data for this row
+                    const rowData = joinData.rowData[index] || { cells: [] };
+                    
+                    // Track which join columns we've filled
+                    let colsFilled = 0;
+                    
+                    if (rowData.cells.length === 0) {
+                        // No parent masks, just add the current mask spanning all join columns
+                        row.push(`/${state.subnets[index].maskBits}`);
+                        for (let i = 1; i < joinColumnCount; i++) {
+                            row.push(''); // Empty cells for merging
+                        }
+                        
+                        // Add a merge for this row's join cells
+                        merges.push({
+                            s: { r: rowIndex, c: joinStartCol },
+                            e: { r: rowIndex, c: joinStartCol + joinColumnCount - 1 }
+                        });
+                    } else {
+                        // Add each join cell based on the structure
+                        for (const cell of rowData.cells) {
+                            if (cell.skip) {
+                                colsFilled += 1;
+                                continue; // Skip cells covered by rowspans
+                            }
+                            
+                            // Add the cell value (mask bits)
+                            row.push(`/${cell.maskBits}`);
+                            
+                            // Add empty cells for colspan (if any)
+                            for (let i = 1; i < cell.colspan; i++) {
+                                row.push('');
+                            }
+                            
+                            // Track how many columns we've filled
+                            colsFilled += cell.colspan;
+                            
+                            // Add merges for colspan and rowspan
+                            if (cell.colspan > 1 || cell.rowspan > 1) {
+                                merges.push({
+                                    s: { r: rowIndex, c: joinStartCol + colsFilled - cell.colspan },
+                                    e: { r: rowIndex + cell.rowspan - 1, c: joinStartCol + colsFilled - 1 }
+                                });
+                            }
+                        }
+                        
+                        // Fill any remaining join columns
+                        while (colsFilled < joinColumnCount) {
+                            row.push('');
+                            colsFilled++;
+                        }
+                    }
+                };
+                
+                /**
+                 * Applies styling to Excel worksheet
+                 * @param {Object} ws - Worksheet object
+                 * @param {Array<string>} header - Header row array
+                 * @param {Array<Array<string>>} ws_data - Worksheet data
+                 */
+                const applyExcelStyling = (ws, header, ws_data) => {
+                    const joinStartCol = header.indexOf('Join');
+                    if (joinStartCol !== -1) {
+                        // Add styling for each cell in the join columns
+                        for (let r = 1; r < ws_data.length; r++) {
+                            for (let c = joinStartCol; c < header.length; c++) {
+                                const cellRef = XLSX.utils.encode_cell({r: r, c: c});
+                                if (!ws[cellRef]) continue;
+                                
+                                // Apply cell styling similar to browser
+                                if (!ws['!cols']) ws['!cols'] = [];
+                                if (!ws['!rows']) ws['!rows'] = [];
+                                
+                                // Set column width to be consistent
+                                if (!ws['!cols'][c]) ws['!cols'][c] = { wch: 10 };
+                                
+                                // Center-align text
+                                if (!ws[cellRef].s) ws[cellRef].s = {};
+                                ws[cellRef].s.alignment = { horizontal: 'center', vertical: 'center' };
+                                
+                                // Background color (light gray)
+                                ws[cellRef].s.fill = { fgColor: { rgb: "CCCCCC" } };
+                                
+                                // Bold text
+                                ws[cellRef].s.font = { bold: true };
+                            }
+                        }
+                    }
+                };
+                
+                /**
+                 * Generates a timestamp string for filenames
+                 * @returns {string} Timestamp string in format YYYYMMDD_HHMM
+                 */
+                const generateTimestamp = () => {
+                    const now = new Date();
+                    return `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+                };
+                
+                // Initialize the application
+                init();
+                
+                // Return public methods
+                return {
+                    generateSubnets,
+                    resetForm,
+                    exportToXLSX,
+                    divideSubnet,
+                    collapseSubnets,
+                    joinSubnet
+                };
+            })();
+        });
     </script>
 </body>
 </html>
